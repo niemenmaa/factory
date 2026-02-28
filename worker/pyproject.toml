@@ -1,0 +1,25 @@
+[project]
+name = "factory-worker"
+version = "0.1.0"
+description = "Local worker daemon for Factory agent orchestrator"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.10.0",
+    "click>=8.0",
+    "docker>=7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25.0",
+]
+
+[project.scripts]
+factory-worker = "factory_worker.main:cli"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
