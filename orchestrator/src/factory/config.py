@@ -72,6 +72,15 @@ class MessageBoardConfig(BaseModel):
     forward_types: list[str] = ["error", "question", "handoff"]  # which types to forward
 
 
+class DockerConfig(BaseModel):
+    preview_domain: str = "preview.factory.6a.fi"
+    network: str = "factory-preview"
+
+
+class DeployConfig(BaseModel):
+    command: list[str] = []
+
+
 class Config(BaseModel):
     max_concurrent_agents: int = 3
     agent_timeout_minutes: int = 60  # Total max runtime for an agent
@@ -84,6 +93,8 @@ class Config(BaseModel):
     surrealdb: SurrealDBConfig = SurrealDBConfig()
     workflows: dict[str, WorkflowConfig] = {}
     message_board: MessageBoardConfig = MessageBoardConfig()
+    docker: DockerConfig = DockerConfig()
+    deploy: DeployConfig = DeployConfig()
 
 
 def load_config(path: Path) -> Config:
