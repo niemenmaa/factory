@@ -327,6 +327,13 @@ def _get_task_context() -> tuple[int, str]:
     return task_id, repo
 
 
+def _get_docker_config() -> tuple[str, str]:
+    """Read Docker config from environment variables."""
+    preview_domain = os.environ.get("FACTORY_PREVIEW_DOMAIN", PREVIEW_DOMAIN)
+    network = os.environ.get("FACTORY_DOCKER_NETWORK", FACTORY_NETWORK)
+    return preview_domain, network
+
+
 def spin_up_test_env(
     compose_file: str = "docker-compose.yml", **kwargs: object
 ) -> str:
@@ -345,7 +352,8 @@ def spin_up_test_env(
     """
     global _current_env  # noqa: PLW0603
     task_id, repo = _get_task_context()
-    _current_env = DockerEnvironment(task_id, repo)
+    preview_domain, network = _get_docker_config()
+    _current_env = DockerEnvironment(task_id, repo, preview_domain=preview_domain, network=network)
     return _current_env.spin_up(compose_file, **kwargs)
 
 
@@ -382,5 +390,6 @@ def spin_up_preview_env(
         The public preview URL.
     """
     task_id, repo = _get_task_context()
-    env = DockerEnvironment(task_id, repo, pr_number=pr_number)
+    preview_domain, network = _get_docker_config()
+    env = DockerEnvironment(task_id, repo, pr_number=pr_number, preview_domain=preview_domain, network=network)
     return env.spin_up(compose_file, **kwargs)

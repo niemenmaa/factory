@@ -142,11 +142,10 @@ Edit `config.yml`. In addition to agent settings, you can configure Docker previ
 docker:
   preview_domain: "preview.example.com"    # Domain for container previews
 
-# Deploy settings (used by the /api/deploy webhook)
+# Deploy settings (used by the GitHub webhook at /api/webhooks/github)
+# command is a list of strings; leave empty or omit to disable auto-deploy
 deploy:
-  command: "/opt/factory/deploy.sh"        # Path to deploy script
-  api_url: "http://localhost:8100/api"     # Factory API base URL
-  service_name: "factory-orchestrator"     # systemd service to restart
+  command: ["systemd-run", "--scope", "/opt/factory/deploy.sh"]
 
 # Agent concurrency and timeouts
 max_concurrent_agents: 3

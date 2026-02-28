@@ -11,15 +11,12 @@ from factory.deps import init_services, shutdown_services
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-# Resolve factory home directory from env or cwd
-_factory_home = Path(os.environ.get("FACTORY_HOME", ".")).resolve()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    factory_home = Path(os.environ.get("FACTORY_HOME", ".")).resolve()
     await init_services(
-        config_path=str(_factory_home / "config.yml"),
-        db_path=str(_factory_home / "factory.db"),
+        config_path=str(factory_home / "config.yml"),
+        db_path=str(factory_home / "factory.db"),
     )
     yield
     await shutdown_services()

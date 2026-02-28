@@ -499,6 +499,6 @@ async def github_webhook(request: Request, orch: Orchestrator = Depends(get_orch
         orch.config.deploy.command,
         start_new_session=True,
     )
-    logger.info("Deploy triggered by push to main (spawned %s)", orch.config.deploy.command[0])
+    logger.info("Deploy triggered by push to main (spawned %s)", orch.config.deploy.command)
 
     return {"status": "deploy_started"}
