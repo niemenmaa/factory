@@ -135,3 +135,57 @@ async def test_list_agents_empty(client):
     resp = await client.get("/api/agents")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+async def test_github_webhook_deploy_configured(client, mock_orchestrator, monkeypatch):
+    """Deploy webhook should use command from config."""
+    from unittest.mock import patch
+
+    mock_orchestrator.config.deploy.command = ["/usr/local/bin/deploy.sh"]
+
+    secret = "test-secret"
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", secret)
+
+    import hmac
+    import hashlib
+    import json
+
+    payload = {"ref": "refs/heads/main"}
+    body = json.dumps(payload).encode()
+    sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+    with patch("factory.api.subprocess.Popen") as mock_popen:
+        resp = await client.post(
+            "/api/webhooks/github",
+            content=body,
+            headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"},
+        )
+
+    assert resp.status_code == 200
+    mock_popen.assert_called_once()
+    cmd = mock_popen.call_args[0][0]
+    assert cmd == ["/usr/local/bin/deploy.sh"]
+
+
+async def test_github_webhook_deploy_not_configured(client, mock_orchestrator, monkeypatch):
+    """Deploy webhook should return 404 when deploy command is not configured."""
+    mock_orchestrator.config.deploy.command = []
+
+    secret = "test-secret"
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", secret)
+
+    import hmac
+    import hashlib
+    import json
+
+    payload = {"ref": "refs/heads/main"}
+    body = json.dumps(payload).encode()
+    sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+    resp = await client.post(
+        "/api/webhooks/github",
+        content=body,
+        headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"},
+    )
+
+    assert resp.status_code == 404
