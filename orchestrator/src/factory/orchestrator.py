@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +29,23 @@ POLL_INTERVAL = 30  # Seconds between polling for responses on waiting tasks
 HANDOFF_MAX_CONTENT = 50000  # Max chars stored in handoff content
 HANDOFF_SUMMARY_LIMIT = 2000  # Max chars for handoff summary
 HANDOFF_INJECT_LIMIT = 8000  # Max chars injected into a prompt per handoff
+
+
+@dataclass
+class WorkerInfo:
+    worker_id: str
+    max_agents: int
+    running: int
+    last_heartbeat: datetime
+
+    @property
+    def is_alive(self) -> bool:
+        elapsed = (datetime.now(timezone.utc) - self.last_heartbeat).total_seconds()
+        return elapsed < 60
+
+    @property
+    def has_capacity(self) -> bool:
+        return self.running < self.max_agents
 
 
 class Orchestrator:
@@ -61,6 +79,29 @@ class Orchestrator:
         self._output_counts: dict[int, int] = {}
         self._output_buffers: dict[int, list[str]] = {}
         self._polling_task: asyncio.Task | None = None
+        self._workers: dict[str, WorkerInfo] = {}
+
+    def register_heartbeat(self, worker_id: str, max_agents: int, running: int) -> None:
+        self._workers[worker_id] = WorkerInfo(
+            worker_id=worker_id,
+            max_agents=max_agents,
+            running=running,
+            last_heartbeat=datetime.now(timezone.utc),
+        )
+
+    def _has_active_workers(self) -> bool:
+        self._prune_dead_workers()
+        return any(w.has_capacity for w in self._workers.values())
+
+    def _prune_dead_workers(self) -> list[str]:
+        dead = [wid for wid, w in self._workers.items() if not w.is_alive]
+        for wid in dead:
+            del self._workers[wid]
+        return dead
+
+    def get_workers(self) -> list[WorkerInfo]:
+        self._prune_dead_workers()
+        return list(self._workers.values())
 
     async def recover_orphaned_tasks(self):
         """Mark any in_progress tasks as failed on startup (no agent is running for them)."""
