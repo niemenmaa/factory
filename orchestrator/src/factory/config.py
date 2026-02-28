@@ -37,6 +37,7 @@ class OrchestratorConfig(BaseModel):
 class RepoConfig(BaseModel):
     url: str
     default_agent: str = "coder"
+    image: str = ""
 
 
 class AgentTemplateConfig(BaseModel):
@@ -72,6 +73,14 @@ class MessageBoardConfig(BaseModel):
     forward_types: list[str] = ["error", "question", "handoff"]  # which types to forward
 
 
+class ExecutionConfig(BaseModel):
+    prefer_workers: bool = True
+    local_fallback: bool = True
+    worker_claim_window_seconds: int = 30
+    worker_heartbeat_ttl_seconds: int = 60
+    claim_lease_ttl_seconds: int = 300
+
+
 class Config(BaseModel):
     max_concurrent_agents: int = 3
     agent_timeout_minutes: int = 60  # Total max runtime for an agent
@@ -84,6 +93,7 @@ class Config(BaseModel):
     surrealdb: SurrealDBConfig = SurrealDBConfig()
     workflows: dict[str, WorkflowConfig] = {}
     message_board: MessageBoardConfig = MessageBoardConfig()
+    execution: ExecutionConfig = ExecutionConfig()
 
 
 def load_config(path: Path) -> Config:

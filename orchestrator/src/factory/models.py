@@ -45,6 +45,20 @@ class Task(BaseModel):
     execution_mode: str = "local"
 
 
+class ClaimPayload(BaseModel):
+    task_id: int
+    title: str
+    description: str = ""
+    repo: str
+    repo_url: str
+    branch_name: str
+    image: str
+    prompt: str
+    system_prompt: str
+    allowed_tools: list[str]
+    timeout_minutes: int
+
+
 class AgentInfo(BaseModel):
     task_id: int
     task_title: str

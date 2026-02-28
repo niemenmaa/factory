@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from factory.config import load_config
+from factory.config import Config, ExecutionConfig, RepoConfig, load_config
 
 
 def test_load_config():
@@ -54,3 +54,22 @@ orchestrator:
     assert config.max_concurrent_agents == 3
     assert config.agent_timeout_minutes == 60  # Default total timeout
     assert config.agent_activity_timeout_minutes == 15  # Default activity timeout
+
+
+def test_execution_config_defaults():
+    config = Config()
+    assert config.execution.prefer_workers is True
+    assert config.execution.local_fallback is True
+    assert config.execution.worker_claim_window_seconds == 30
+    assert config.execution.worker_heartbeat_ttl_seconds == 60
+    assert config.execution.claim_lease_ttl_seconds == 300
+
+
+def test_repo_config_image_field():
+    repo = RepoConfig(url="https://github.com/test/repo.git", image="factory-agent:php")
+    assert repo.image == "factory-agent:php"
+
+
+def test_repo_config_image_default():
+    repo = RepoConfig(url="https://github.com/test/repo.git")
+    assert repo.image == ""
