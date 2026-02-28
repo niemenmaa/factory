@@ -68,3 +68,19 @@ async def test_list_tasks_by_status():
     assert in_progress[0].title == "Task 2"
 
     await db.close()
+
+
+async def test_task_has_worker_fields():
+    db = Database(":memory:")
+    await db.initialize()
+
+    task = await db.create_task(TaskCreate(
+        title="Test worker fields",
+        repo="myapp",
+    ))
+
+    assert task.claimed_by is None
+    assert task.claimed_at is None
+    assert task.execution_mode == "local"
+
+    await db.close()

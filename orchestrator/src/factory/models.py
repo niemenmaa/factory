@@ -40,6 +40,9 @@ class Task(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    claimed_by: str | None = None
+    claimed_at: datetime | None = None
+    execution_mode: str = "local"
 
 
 class AgentInfo(BaseModel):

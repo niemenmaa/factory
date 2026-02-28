@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     clarification_context TEXT DEFAULT '',
     created_at TEXT NOT NULL,
     started_at TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    claimed_by TEXT DEFAULT NULL,
+    claimed_at TEXT DEFAULT NULL,
+    execution_mode TEXT DEFAULT 'local'
 );
 
 CREATE TABLE IF NOT EXISTS task_logs (
@@ -110,6 +113,9 @@ MIGRATIONS = [
     "ALTER TABLE workflows ADD COLUMN max_iterations INTEGER DEFAULT 3;",
     "ALTER TABLE workflow_steps ADD COLUMN loop_to TEXT DEFAULT '';",
     "ALTER TABLE workflow_steps ADD COLUMN prompt_template TEXT DEFAULT '';",
+    "ALTER TABLE tasks ADD COLUMN claimed_by TEXT DEFAULT NULL",
+    "ALTER TABLE tasks ADD COLUMN claimed_at TEXT DEFAULT NULL",
+    "ALTER TABLE tasks ADD COLUMN execution_mode TEXT DEFAULT 'local'",
 ]
 
 
@@ -131,6 +137,9 @@ def _row_to_task(row: aiosqlite.Row) -> Task:
         created_at=datetime.fromisoformat(row["created_at"]),
         started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
         completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+        claimed_by=row["claimed_by"] if "claimed_by" in row.keys() else None,
+        claimed_at=datetime.fromisoformat(row["claimed_at"]) if "claimed_at" in row.keys() and row["claimed_at"] else None,
+        execution_mode=row["execution_mode"] if "execution_mode" in row.keys() else "local",
     )
 
 
