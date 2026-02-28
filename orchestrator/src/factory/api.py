@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import subprocess
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -429,6 +430,17 @@ async def list_agents(orch: Orchestrator = Depends(get_orchestrator)):
 
 
 # ── Worker protocol endpoints ──────────────────────────────────────────
+
+
+def _detect_image_from_path(repo_path: Path) -> str:
+    """Auto-detect Docker image from repo marker files."""
+    if (repo_path / "composer.json").exists():
+        return "factory-agent:php"
+    if (repo_path / "pyproject.toml").exists() or (repo_path / "requirements.txt").exists():
+        return "factory-agent:python"
+    if (repo_path / "package.json").exists():
+        return "factory-agent:node"
+    return "factory-agent:base"
 
 
 def _build_claim_payload(task, orch) -> dict:
