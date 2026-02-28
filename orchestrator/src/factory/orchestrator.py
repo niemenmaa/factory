@@ -288,6 +288,16 @@ class Orchestrator:
             logger.error("Task %d not found", task_id)
             return False
 
+        # Skip if claimed by a remote worker
+        if task.claimed_by:
+            logger.info("Task %d claimed by worker %s, skipping local execution", task_id, task.claimed_by)
+            return True
+
+        # Defer to workers if available and preferred
+        if hasattr(self.config, 'execution') and self.config.execution.prefer_workers and self._has_active_workers():
+            logger.info("Task %d deferred to workers", task_id)
+            return True
+
         repo_config = self.config.repos.get(task.repo)
         if not repo_config:
             await self.db.update_task_status(task_id, TaskStatus.FAILED, error=f"Unknown repo: {task.repo}")
