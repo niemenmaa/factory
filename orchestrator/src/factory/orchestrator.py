@@ -99,6 +99,22 @@ class Orchestrator:
             del self._workers[wid]
         return dead
 
+    async def prune_and_cleanup_dead_workers(self) -> list[str]:
+        """Remove dead workers and clean up their tasks."""
+        dead = self._prune_dead_workers()
+        for worker_id in dead:
+            released = await self.db.release_worker_claims(worker_id)
+            failed = await self.db.fail_worker_tasks(worker_id)
+            logger.warning(
+                "Worker %s died: released %d claims, failed %d tasks",
+                worker_id, released, failed,
+            )
+            if failed > 0:
+                await self._notify(
+                    f"\u26a0\ufe0f Worker {worker_id} disconnected, {failed} task(s) failed"
+                )
+        return dead
+
     def get_workers(self) -> list[WorkerInfo]:
         self._prune_dead_workers()
         return list(self._workers.values())
