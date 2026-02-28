@@ -14,16 +14,43 @@ from pydantic import BaseModel
 from factory.db import Database
 from factory.deps import get_db, get_orchestrator
 from factory.models import (
-    AgentHandoff, AgentInfo, CodeReviewCreate, HandoffCreate,
+    AgentHandoff, AgentInfo, ClaimPayload, CodeReviewCreate, HandoffCreate,
     Message, MessageCreate, MessageType,
     Task, TaskCreate, TaskStatus, Workflow, WorkflowCreate, WorkflowStatus,
 )
 from factory.orchestrator import Orchestrator
 from factory.plane import parse_webhook_event
+from factory.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+
+# ── Worker protocol request models ────────────────────────────────────
+
+
+class HeartbeatRequest(BaseModel):
+    worker_id: str
+    max_agents: int
+    running: int
+
+
+class ClaimRequest(BaseModel):
+    worker_id: str
+    count: int = 1
+
+
+class SingleClaimRequest(BaseModel):
+    worker_id: str
+
+
+class ReportRequest(BaseModel):
+    worker_id: str
+    status: str  # "done", "failed", or "in_progress"
+    output: str = ""
+    branch_name: str = ""
+    pr_url: str = ""
 
 
 @router.post("/tasks", response_model=Task, status_code=201)
@@ -399,6 +426,136 @@ async def list_agents(orch: Orchestrator = Depends(get_orchestrator)):
         )
         for a in agents.values()
     ]
+
+
+# ── Worker protocol endpoints ──────────────────────────────────────────
+
+
+def _build_claim_payload(task, orch) -> dict:
+    """Build the full execution payload for a claimed task."""
+    repo_config = orch.config.repos.get(task.repo)
+    template = orch.config.agent_templates.get(task.agent_type)
+
+    repo_url = repo_config.url if repo_config else ""
+    image = (repo_config.image if repo_config and repo_config.image
+             else "factory-agent:base")
+
+    prompt = orch._build_prompt(task.title, task.description)
+    system_prompt = ""
+    if template and template.system_prompt_file:
+        try:
+            system_prompt = load_prompt(template.system_prompt_file, orch.base_dir)
+        except Exception:
+            pass
+
+    branch_name = task.branch_name
+    if not branch_name:
+        slug = re.sub(r"[^a-z0-9]+", "-", task.title.lower()).strip("-")[:50]
+        branch_name = f"agent/task-{task.id}-{slug}"
+
+    allowed_tools = template.allowed_tools if template else []
+    timeout = template.timeout_minutes if template else 60
+
+    return ClaimPayload(
+        task_id=task.id,
+        title=task.title,
+        description=task.description,
+        repo=task.repo,
+        repo_url=repo_url,
+        branch_name=branch_name,
+        image=image,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        allowed_tools=allowed_tools,
+        timeout_minutes=timeout,
+    ).model_dump()
+
+
+@router.post("/workers/heartbeat")
+async def worker_heartbeat(
+    body: HeartbeatRequest,
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    orch.register_heartbeat(body.worker_id, body.max_agents, body.running)
+    return {"status": "ok"}
+
+
+@router.get("/workers")
+async def list_workers(orch: Orchestrator = Depends(get_orchestrator)):
+    workers = orch.get_workers()
+    return [
+        {
+            "worker_id": w.worker_id,
+            "max_agents": w.max_agents,
+            "running": w.running,
+            "last_heartbeat": w.last_heartbeat.isoformat(),
+            "is_alive": w.is_alive,
+            "has_capacity": w.has_capacity,
+        }
+        for w in workers
+    ]
+
+
+@router.post("/tasks/claim")
+async def claim_tasks(
+    body: ClaimRequest,
+    db: Database = Depends(get_db),
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    tasks = await db.claim_tasks(body.worker_id, body.count)
+    payloads = [_build_claim_payload(t, orch) for t in tasks]
+    return {"tasks": payloads}
+
+
+@router.post("/tasks/{task_id}/claim")
+async def claim_specific_task(
+    task_id: int,
+    body: SingleClaimRequest,
+    db: Database = Depends(get_db),
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    task = await db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    success = await db.claim_task(task_id, body.worker_id)
+    if not success:
+        raise HTTPException(status_code=409, detail="Task already claimed or not queued")
+    task = await db.get_task(task_id)
+    return {"task": _build_claim_payload(task, orch)}
+
+
+@router.post("/tasks/{task_id}/report")
+async def report_task_result(
+    task_id: int,
+    body: ReportRequest,
+    db: Database = Depends(get_db),
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    task = await db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Handle in_progress status report (lease refresh)
+    if body.status == "in_progress":
+        await db.update_task_status(task_id, TaskStatus.IN_PROGRESS)
+        return {"status": "ok"}
+
+    # Update task fields from worker report
+    fields = {}
+    if body.branch_name:
+        fields["branch_name"] = body.branch_name
+    if body.pr_url:
+        fields["pr_url"] = body.pr_url
+    if fields:
+        await db.update_task_fields(task_id, **fields)
+
+    # Route to orchestrator completion handlers
+    if body.status == "done":
+        await orch._handle_success(task_id, body.output)
+    else:
+        await orch._handle_failure(task_id, body.output)
+
+    return {"status": "ok"}
 
 
 @router.post("/webhooks/plane")
