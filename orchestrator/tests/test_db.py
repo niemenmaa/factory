@@ -84,3 +84,77 @@ async def test_task_has_worker_fields():
     assert task.execution_mode == "local"
 
     await db.close()
+
+
+async def test_claim_task():
+    db = Database(":memory:")
+    await db.initialize()
+
+    task = await db.create_task(TaskCreate(title="Claim me", repo="myapp"))
+
+    # Claim succeeds
+    claimed = await db.claim_task(task.id, "worker-1")
+    assert claimed is True
+
+    fetched = await db.get_task(task.id)
+    assert fetched.claimed_by == "worker-1"
+    assert fetched.claimed_at is not None
+    assert fetched.execution_mode == "remote"
+
+    # Double claim fails
+    claimed_again = await db.claim_task(task.id, "worker-2")
+    assert claimed_again is False
+
+    # Verify still claimed by worker-1
+    fetched = await db.get_task(task.id)
+    assert fetched.claimed_by == "worker-1"
+
+    await db.close()
+
+
+async def test_claim_task_only_queued():
+    db = Database(":memory:")
+    await db.initialize()
+
+    task = await db.create_task(TaskCreate(title="In progress", repo="myapp"))
+    await db.update_task_status(task.id, TaskStatus.IN_PROGRESS)
+
+    claimed = await db.claim_task(task.id, "worker-1")
+    assert claimed is False
+
+    await db.close()
+
+
+async def test_release_claim():
+    db = Database(":memory:")
+    await db.initialize()
+
+    task = await db.create_task(TaskCreate(title="Release me", repo="myapp"))
+    await db.claim_task(task.id, "worker-1")
+
+    await db.release_claim(task.id)
+
+    fetched = await db.get_task(task.id)
+    assert fetched.claimed_by is None
+    assert fetched.claimed_at is None
+    assert fetched.execution_mode == "local"
+
+    await db.close()
+
+
+async def test_claim_batch():
+    db = Database(":memory:")
+    await db.initialize()
+
+    t1 = await db.create_task(TaskCreate(title="Task 1", repo="myapp"))
+    t2 = await db.create_task(TaskCreate(title="Task 2", repo="myapp"))
+    t3 = await db.create_task(TaskCreate(title="Task 3", repo="myapp"))
+
+    claimed = await db.claim_tasks("worker-1", count=2)
+    assert len(claimed) == 2
+
+    # Third task still available
+    remaining = await db.claim_tasks("worker-2", count=5)
+    assert len(remaining) == 1
+
+    await db.close()

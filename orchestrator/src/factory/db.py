@@ -292,6 +292,62 @@ class Database:
         rows = await cursor.fetchall()
         return [{"message": row["message"], "timestamp": row["timestamp"]} for row in rows]
 
+    # ── Task claim operations ────────────────────────────────────────────
+
+    async def claim_task(self, task_id: int, worker_id: str) -> bool:
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE tasks SET claimed_by = ?, claimed_at = ?, execution_mode = 'remote' "
+            "WHERE id = ? AND claimed_by IS NULL AND status = 'queued'",
+            (worker_id, now, task_id),
+        )
+        await self._db.commit()
+        return cursor.rowcount > 0
+
+    async def release_claim(self, task_id: int) -> None:
+        await self._db.execute(
+            "UPDATE tasks SET claimed_by = NULL, claimed_at = NULL, execution_mode = 'local' "
+            "WHERE id = ?",
+            (task_id,),
+        )
+        await self._db.commit()
+
+    async def claim_tasks(self, worker_id: str, count: int) -> list[Task]:
+        cursor = await self._db.execute(
+            "SELECT id FROM tasks WHERE status = 'queued' AND claimed_by IS NULL "
+            "ORDER BY created_at ASC LIMIT ?",
+            (count,),
+        )
+        rows = await cursor.fetchall()
+        claimed = []
+        for row in rows:
+            if await self.claim_task(row["id"], worker_id):
+                task = await self.get_task(row["id"])
+                if task:
+                    claimed.append(task)
+        return claimed
+
+    async def release_worker_claims(self, worker_id: str) -> int:
+        """Release all claims held by a worker. Returns count released."""
+        cursor = await self._db.execute(
+            "UPDATE tasks SET claimed_by = NULL, claimed_at = NULL, execution_mode = 'local' "
+            "WHERE claimed_by = ? AND status = 'queued'",
+            (worker_id,),
+        )
+        await self._db.commit()
+        return cursor.rowcount
+
+    async def fail_worker_tasks(self, worker_id: str) -> int:
+        """Fail all in-progress tasks for a dead worker. Returns count failed."""
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE tasks SET status = 'failed', error = 'Worker disconnected', "
+            "completed_at = ? WHERE claimed_by = ? AND status = 'in_progress'",
+            (now, worker_id),
+        )
+        await self._db.commit()
+        return cursor.rowcount
+
     # ── Workflow operations ──────────────────────────────────────────────
 
     async def create_workflow(
