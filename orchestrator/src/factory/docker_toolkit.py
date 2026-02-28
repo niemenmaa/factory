@@ -70,12 +70,16 @@ class DockerEnvironment:
         task_id: int,
         repo: str,
         pr_number: Optional[int] = None,
+        preview_domain: str = PREVIEW_DOMAIN,
+        network: str = FACTORY_NETWORK,
     ):
         self.task_id = task_id
         self.repo = repo
         self.pr_number = pr_number
         self.project_name = f"factory-task-{task_id}"
         self.env_type = "preview" if pr_number is not None else "test"
+        self.preview_domain = preview_domain
+        self.network = network
 
     def get_labels(self) -> dict[str, str]:
         """Return standard Factory labels for containers.
@@ -118,8 +122,8 @@ class DockerEnvironment:
     def _get_hostname(self) -> str:
         """Build the hostname for this environment."""
         if self.pr_number is not None:
-            return f"pr-{self.pr_number}.{PREVIEW_DOMAIN}"
-        return f"task-{self.task_id}.{PREVIEW_DOMAIN}"
+            return f"pr-{self.pr_number}.{self.preview_domain}"
+        return f"task-{self.task_id}.{self.preview_domain}"
 
     def spin_up(
         self,
@@ -147,7 +151,7 @@ class DockerEnvironment:
         hostname = self._get_hostname()
 
         # Ensure the factory-preview network exists
-        _ensure_network()
+        _ensure_network(self.network)
 
         # Build environment variables for compose
         env = os.environ.copy()
@@ -249,7 +253,7 @@ class DockerEnvironment:
         for cid in container_ids:
             if cid:
                 subprocess.run(
-                    ["docker", "network", "connect", FACTORY_NETWORK, cid],
+                    ["docker", "network", "connect", self.network, cid],
                     capture_output=True,
                     # Don't check — may already be connected
                 )
@@ -258,7 +262,7 @@ class DockerEnvironment:
 # ── Helper functions ────────────────────────────────────────────────────
 
 
-def _ensure_network() -> None:
+def _ensure_network(network: str = FACTORY_NETWORK) -> None:
     """Create the factory-preview Docker network if it doesn't exist."""
     result = subprocess.run(
         [
@@ -266,17 +270,17 @@ def _ensure_network() -> None:
             "network",
             "ls",
             "--filter",
-            f"name=^{FACTORY_NETWORK}$",
+            f"name=^{network}$",
             "--format",
             "{{.Name}}",
         ],
         capture_output=True,
         text=True,
     )
-    if FACTORY_NETWORK not in result.stdout:
-        logger.info("Creating Docker network: %s", FACTORY_NETWORK)
+    if network not in result.stdout:
+        logger.info("Creating Docker network: %s", network)
         subprocess.run(
-            ["docker", "network", "create", FACTORY_NETWORK],
+            ["docker", "network", "create", network],
             check=True,
             capture_output=True,
         )
