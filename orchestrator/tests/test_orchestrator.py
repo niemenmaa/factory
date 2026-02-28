@@ -71,3 +71,24 @@ async def test_orchestrator_rejects_when_full(MockRunner, MockRepoMgr):
     assert result is False
 
     await db.close()
+
+
+@patch("factory.orchestrator.RepoManager")
+@patch("factory.orchestrator.AgentRunner")
+async def test_orchestrator_uses_base_dir(MockRunner, MockRepoMgr):
+    """Orchestrator should use base_dir, not hardcoded /opt/factory."""
+    db = Database(":memory:")
+    await db.initialize()
+
+    config = Config()
+    custom_dir = Path("/tmp/my-factory")
+
+    orch = Orchestrator(db=db, config=config, base_dir=custom_dir)
+
+    # RepoManager should receive base_dir-relative paths
+    MockRepoMgr.assert_called_once_with(
+        repos_dir=custom_dir / "repos",
+        worktrees_dir=custom_dir / "worktrees",
+    )
+
+    await db.close()
