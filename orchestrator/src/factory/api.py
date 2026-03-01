@@ -449,8 +449,12 @@ def _build_claim_payload(task, orch) -> dict:
     template = orch.config.agent_templates.get(task.agent_type)
 
     repo_url = repo_config.url if repo_config else ""
-    image = (repo_config.image if repo_config and repo_config.image
-             else "factory-agent:base")
+    if repo_config and repo_config.image:
+        image = repo_config.image
+    else:
+        # Auto-detect from repo marker files if the repo is cloned locally
+        local_repo = orch.repo_manager.repos_dir / task.repo
+        image = _detect_image_from_path(local_repo) if local_repo.exists() else "factory-agent:base"
 
     prompt = orch._build_prompt(task.title, task.description)
     system_prompt = ""

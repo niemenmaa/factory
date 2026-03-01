@@ -1,1 +1,3 @@
+# Node.js runtime is already included in the base image, so this image
+# simply inherits from base without adding extra layers.
 FROM factory-agent:base

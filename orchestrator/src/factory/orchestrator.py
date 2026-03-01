@@ -310,7 +310,7 @@ class Orchestrator:
             return True
 
         # Defer to workers if available and preferred
-        if hasattr(self.config, 'execution') and self.config.execution.prefer_workers and self._has_active_workers():
+        if self.config.execution.prefer_workers and self._has_active_workers():
             logger.info("Task %d deferred to workers", task_id)
             return True
 
@@ -743,15 +743,20 @@ This summary will be used as the PR description, so write it for a human reviewe
             return
 
         # Standalone task: push branch and create PR
-        pr_url = ""
-        wt_path = FACTORY_ROOT / "worktrees" / task.branch_name.replace("/", "-")
-        try:
-            pr_url = await self._push_and_create_pr(task_id, wt_path, task.branch_name, task.title, summary=output)
-            await self.db.update_task_fields(task_id, pr_url=pr_url)
-            logger.info("Created PR for task %d: %s", task_id, pr_url)
-        except Exception as e:
-            logger.warning("Failed to create PR for task %d: %s", task_id, e)
-            await self.db.add_log(task_id, f"PR creation failed: {e}")
+        pr_url = task.pr_url or ""
+
+        if task.execution_mode == "remote":
+            # Remote worker already pushed and created PR — skip local push
+            logger.info("Task %d completed remotely, skipping local PR creation", task_id)
+        else:
+            wt_path = FACTORY_ROOT / "worktrees" / task.branch_name.replace("/", "-")
+            try:
+                pr_url = await self._push_and_create_pr(task_id, wt_path, task.branch_name, task.title, summary=output)
+                await self.db.update_task_fields(task_id, pr_url=pr_url)
+                logger.info("Created PR for task %d: %s", task_id, pr_url)
+            except Exception as e:
+                logger.warning("Failed to create PR for task %d: %s", task_id, e)
+                await self.db.add_log(task_id, f"PR creation failed: {e}")
 
         await self.db.update_task_status(task_id, TaskStatus.IN_REVIEW)
 
