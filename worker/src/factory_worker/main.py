@@ -29,8 +29,10 @@ async def launch_agent(task: dict, client: OrchestratorClient,
         await client.report_in_progress(task_id, config.worker_id)
         env = {
             "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
-            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN", ""),
         }
+        github_token = os.environ.get("GITHUB_TOKEN", "")
+        if github_token:
+            env["GITHUB_TOKEN"] = github_token
         containers.start(
             task_id=task_id, worktree_path=str(wt_path),
             prompt=task["prompt"], system_prompt=task["system_prompt"],
