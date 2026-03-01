@@ -9,6 +9,14 @@ repos/
 config.yml
 prompts/private/
 
+# Build artifacts
+uv.lock
+*.egg-info/
+
+# Tool configs
+.claude/
+.serena/
+
 # Deploy artifacts
 deploy.lock
 deploy.log
