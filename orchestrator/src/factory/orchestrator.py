@@ -216,20 +216,34 @@ class Orchestrator:
             pass
         return False
 
+    def _resolve_workspace(self, repo: str = ""):
+        """Get workspace config for a repo, if any."""
+        if repo:
+            repo_config = self.config.repos.get(repo)
+            if repo_config and repo_config.workspace:
+                return self.config.workspaces.get(repo_config.workspace)
+        return None
+
     def _resolve_plane_project(self, repo: str = "") -> str:
-        """Resolve Plane project ID: per-repo override, then global fallback."""
+        """Resolve Plane project ID: repo → workspace → global."""
         if repo:
             repo_config = self.config.repos.get(repo)
             if repo_config and repo_config.plane_project_id:
                 return repo_config.plane_project_id
+        ws = self._resolve_workspace(repo)
+        if ws and ws.plane_project_id:
+            return ws.plane_project_id
         return self.config.plane.project_id
 
     def _resolve_plane_states(self, repo: str = ""):
-        """Resolve Plane states config: per-repo override (if any field set), then global fallback."""
+        """Resolve Plane states: repo → workspace → global."""
         if repo:
             repo_config = self.config.repos.get(repo)
             if repo_config and repo_config.plane_states.queued:
                 return repo_config.plane_states
+        ws = self._resolve_workspace(repo)
+        if ws and ws.plane_states.queued:
+            return ws.plane_states
         return self.config.plane.states
 
     async def _update_plane_state(self, plane_issue_id: str, state_id: str, comment: str = "", repo: str = ""):

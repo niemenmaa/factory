@@ -34,12 +34,19 @@ class OrchestratorConfig(BaseModel):
     auth_token: str = ""
 
 
+class WorkspaceConfig(BaseModel):
+    plane_project_id: str = ""
+    plane_states: PlaneStatesConfig = PlaneStatesConfig()
+    default_agent: str = "coder"
+
+
 class RepoConfig(BaseModel):
     url: str
+    workspace: str = ""  # References workspaces[name] for Plane mapping
     default_agent: str = "coder"
     image: str = ""
-    plane_project_id: str = ""  # Per-repo Plane project; falls back to plane.project_id
-    plane_states: PlaneStatesConfig = PlaneStatesConfig()  # Per-repo states; falls back to plane.states
+    plane_project_id: str = ""  # Per-repo override; falls back to workspace, then global
+    plane_states: PlaneStatesConfig = PlaneStatesConfig()  # Per-repo override
 
 
 class AgentTemplateConfig(BaseModel):
@@ -90,6 +97,7 @@ class Config(BaseModel):
     agent_activity_timeout_minutes: int = 15  # Kill if no output for this long
     plane: PlaneConfig = PlaneConfig()
     orchestrator: OrchestratorConfig = OrchestratorConfig()
+    workspaces: dict[str, WorkspaceConfig] = {}
     repos: dict[str, RepoConfig] = {}
     telegram: TelegramConfig = TelegramConfig()
     agent_templates: dict[str, AgentTemplateConfig] = {}
