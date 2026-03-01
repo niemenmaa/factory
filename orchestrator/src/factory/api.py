@@ -40,10 +40,10 @@ async def create_task(
     if not body.plane_issue_id and orch.plane:
         try:
             issue_id = await orch.plane.create_issue(
-                project_id=orch._resolve_plane_project(body.repo),
+                project_id=orch.resolve_plane_project(body.repo),
                 title=body.title,
                 description=body.description or "",
-                state_id=orch._resolve_plane_states(body.repo).queued,
+                state_id=orch.resolve_plane_states(body.repo).queued,
             )
             body.plane_issue_id = issue_id
         except Exception as e:

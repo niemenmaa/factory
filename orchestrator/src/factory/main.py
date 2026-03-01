@@ -11,6 +11,7 @@ from factory.deps import init_services, shutdown_services
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     factory_home = Path(os.environ.get("FACTORY_HOME", ".")).resolve()

@@ -1,7 +1,5 @@
 # VPS Decoupling Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Remove all hardcoded VPS-specific values (`/opt/factory`, `preview.factory.6a.fi`, `systemd-run`) so Factory can deploy to any VPS or local machine via configuration.
 
 **Architecture:** Replace module-level constants with config-driven values. The `FACTORY_HOME` env var sets the root directory (defaults to cwd). Docker domain/network move to `config.yml`. Deploy command becomes configurable. All existing defaults match current values for backward compatibility.
