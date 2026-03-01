@@ -44,9 +44,13 @@ class ContainerManager:
             cmd.extend(["--allowedTools", ",".join(allowed_tools)])
         cmd.append(prompt)
 
+        volumes = {worktree_path: {"bind": "/workspace", "mode": "rw"}}
+        if self._config.ssh_dir:
+            volumes[self._config.ssh_dir] = {"bind": "/root/.ssh", "mode": "ro"}
+
         container = self._docker.containers.run(
             image, cmd, name=container_name, detach=True,
-            volumes={worktree_path: {"bind": "/workspace", "mode": "rw"}},
+            volumes=volumes,
             environment=env, working_dir="/workspace",
             cpu_count=int(self._config.cpu_limit),
             mem_limit=self._config.memory_limit,

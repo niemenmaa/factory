@@ -10,6 +10,7 @@ class ContainerConfig(BaseModel):
     cpu_limit: str = "2"
     memory_limit: str = "4g"
     timeout_minutes: int = 60
+    ssh_dir: str = ""  # Path to .ssh dir to mount into containers (e.g. /root/.ssh)
 
 
 class WorkerConfig(BaseModel):

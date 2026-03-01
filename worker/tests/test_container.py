@@ -107,3 +107,44 @@ def test_parse_output_no_match():
     branch, pr_url = _parse_output(output)
     assert pr_url == ""
     assert branch == ""
+
+
+@patch("factory_worker.container.docker.from_env")
+def test_start_without_ssh_dir(mock_docker_env):
+    """When ssh_dir is empty, only workspace volume is mounted."""
+    config = ContainerConfig(ssh_dir="")
+    mock_client = MagicMock()
+    mock_docker_env.return_value = mock_client
+    mock_client.containers.run.return_value = MagicMock()
+
+    manager = ContainerManager(config)
+    manager.start(
+        task_id=1, worktree_path="/tmp/wt", prompt="Fix bug",
+        system_prompt="", allowed_tools=[], image="img:latest", env={},
+    )
+
+    call_kwargs = mock_client.containers.run.call_args[1]
+    assert call_kwargs["volumes"] == {
+        "/tmp/wt": {"bind": "/workspace", "mode": "rw"},
+    }
+
+
+@patch("factory_worker.container.docker.from_env")
+def test_start_with_ssh_dir(mock_docker_env):
+    """When ssh_dir is set, SSH directory is mounted read-only alongside workspace."""
+    config = ContainerConfig(ssh_dir="/home/user/.ssh")
+    mock_client = MagicMock()
+    mock_docker_env.return_value = mock_client
+    mock_client.containers.run.return_value = MagicMock()
+
+    manager = ContainerManager(config)
+    manager.start(
+        task_id=2, worktree_path="/tmp/wt", prompt="Fix bug",
+        system_prompt="", allowed_tools=[], image="img:latest", env={},
+    )
+
+    call_kwargs = mock_client.containers.run.call_args[1]
+    assert call_kwargs["volumes"] == {
+        "/tmp/wt": {"bind": "/workspace", "mode": "rw"},
+        "/home/user/.ssh": {"bind": "/root/.ssh", "mode": "ro"},
+    }
