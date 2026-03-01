@@ -73,3 +73,57 @@ def test_repo_config_image_field():
 def test_repo_config_image_default():
     repo = RepoConfig(url="https://github.com/test/repo.git")
     assert repo.image == ""
+
+def test_docker_config_defaults():
+    cfg_text = """
+orchestrator:
+  port: 8100
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(cfg_text)
+        f.flush()
+        config = load_config(Path(f.name))
+
+    assert config.docker.preview_domain == "preview.factory.6a.fi"
+    assert config.docker.network == "factory-preview"
+
+
+def test_docker_config_custom():
+    cfg_text = """
+docker:
+  preview_domain: "preview.myserver.com"
+  network: "my-network"
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(cfg_text)
+        f.flush()
+        config = load_config(Path(f.name))
+
+    assert config.docker.preview_domain == "preview.myserver.com"
+    assert config.docker.network == "my-network"
+
+
+def test_deploy_config_defaults():
+    cfg_text = """
+orchestrator:
+  port: 8100
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(cfg_text)
+        f.flush()
+        config = load_config(Path(f.name))
+
+    assert config.deploy.command == []
+
+
+def test_deploy_config_custom():
+    cfg_text = """
+deploy:
+  command: ["systemd-run", "--scope", "/opt/factory/deploy.sh"]
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(cfg_text)
+        f.flush()
+        config = load_config(Path(f.name))
+
+    assert config.deploy.command == ["systemd-run", "--scope", "/opt/factory/deploy.sh"]

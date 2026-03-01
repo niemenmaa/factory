@@ -111,6 +111,9 @@ pip install -e .
 Copy `.env.example` to `.env` and fill in your keys:
 
 ```bash
+# Factory root directory (defaults to current working directory)
+# FACTORY_HOME=/opt/factory
+
 # Required
 ANTHROPIC_API_KEY=sk-ant-...
 GITHUB_TOKEN=ghp_...
@@ -132,9 +135,18 @@ OPENAI_API_KEY=sk-...
 
 ### 3. Configure Factory
 
-Edit `config.yml`:
+Edit `config.yml`. In addition to agent settings, you can configure Docker preview domains and the deploy command so Factory works on any VPS — not just the default `/opt/factory` layout:
 
 ```yaml
+# Docker preview settings (used by the Docker toolkit)
+docker:
+  preview_domain: "preview.example.com"    # Domain for container previews
+
+# Deploy settings (used by the GitHub webhook at /api/webhooks/github)
+# command is a list of strings; leave empty or omit to disable auto-deploy
+deploy:
+  command: ["systemd-run", "--scope", "/opt/factory/deploy.sh"]
+
 # Agent concurrency and timeouts
 max_concurrent_agents: 3
 agent_timeout_minutes: 60        # Kill agent after 60 min total
@@ -249,10 +261,10 @@ cd orchestrator
 uvicorn factory.main:app --host 0.0.0.0 --port 8100
 ```
 
-For production, use a process manager:
+For production, use a process manager. The `FACTORY_HOME` environment variable controls where Factory looks for configuration, prompts, and workspaces (defaults to the current working directory). Set it in your `.env` or systemd unit to match your install location:
 
 ```bash
-# Using systemd
+# Using systemd (adjust paths if you install somewhere other than /opt/factory)
 sudo tee /etc/systemd/system/factory.service << EOF
 [Unit]
 Description=Factory Agent Orchestrator
@@ -263,6 +275,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/factory
 Environment=PATH=/opt/factory/.venv/bin
+Environment=FACTORY_HOME=/opt/factory
 EnvironmentFile=/opt/factory/.env
 ExecStart=/opt/factory/.venv/bin/uvicorn factory.main:app --host 0.0.0.0 --port 8100
 Restart=always

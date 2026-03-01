@@ -22,8 +22,6 @@ from factory.workspace import RepoManager
 
 logger = logging.getLogger(__name__)
 
-FACTORY_ROOT = Path("/opt/factory")
-
 PROGRESS_INTERVAL = 5  # Post progress to Plane every N output messages
 POLL_INTERVAL = 30  # Seconds between polling for responses on waiting tasks
 HANDOFF_MAX_CONTENT = 50000  # Max chars stored in handoff content
@@ -49,14 +47,14 @@ class WorkerInfo:
 
 
 class Orchestrator:
-    def __init__(self, db: Database, config: Config, memory: AgentMemory | None = None, base_dir: Path = FACTORY_ROOT):
+    def __init__(self, db: Database, config: Config, memory: AgentMemory | None = None, base_dir: Path | None = None):
         self.db = db
         self.config = config
         self.memory = memory
-        self.base_dir = base_dir
+        self.base_dir = base_dir or Path(".").resolve()
         self.repo_manager = RepoManager(
-            repos_dir=FACTORY_ROOT / "repos",
-            worktrees_dir=FACTORY_ROOT / "worktrees",
+            repos_dir=self.base_dir / "repos",
+            worktrees_dir=self.base_dir / "worktrees",
         )
         self.runner = AgentRunner(
             max_concurrent=config.max_concurrent_agents,
@@ -744,7 +742,7 @@ This summary will be used as the PR description, so write it for a human reviewe
 
         # Standalone task: push branch and create PR
         pr_url = ""
-        wt_path = FACTORY_ROOT / "worktrees" / task.branch_name.replace("/", "-")
+        wt_path = self.base_dir / "worktrees" / task.branch_name.replace("/", "-")
         try:
             pr_url = await self._push_and_create_pr(task_id, wt_path, task.branch_name, task.title, summary=output)
             await self.db.update_task_fields(task_id, pr_url=pr_url)
@@ -873,7 +871,7 @@ This summary will be used as the PR description, so write it for a human reviewe
             await self.db.update_task_status(task_id, TaskStatus.FAILED, error="Unknown agent type on resume")
             return False
 
-        wt_path = FACTORY_ROOT / "worktrees" / task.branch_name.replace("/", "-")
+        wt_path = self.base_dir / "worktrees" / task.branch_name.replace("/", "-")
 
         await self.db.update_task_status(task_id, TaskStatus.IN_PROGRESS)
         await self._update_plane_state(
@@ -1252,7 +1250,7 @@ This summary will be used as the PR description, so write it for a human reviewe
             task = await self.db.get_task(last_task_id)
             if task and task.branch_name:
                 pr_url = ""
-                wt_path = FACTORY_ROOT / "worktrees" / task.branch_name.replace("/", "-")
+                wt_path = self.base_dir / "worktrees" / task.branch_name.replace("/", "-")
                 try:
                     summary = f"Workflow: {workflow.name}\n\n"
                     for step in workflow.steps:

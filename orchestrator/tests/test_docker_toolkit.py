@@ -470,6 +470,29 @@ class TestConvenienceFunctions:
         assert "docker-compose.yml" in cmd
 
 
+# ── Custom domain / network ──────────────────────────────────────────────
+
+
+class TestCustomDomain:
+    def test_custom_preview_domain(self):
+        env = DockerEnvironment(task_id=42, repo="acme/webapp", preview_domain="preview.myserver.com")
+        assert env.get_url() == "https://task-42.preview.myserver.com"
+
+    def test_custom_domain_in_traefik_labels(self):
+        env = DockerEnvironment(task_id=42, repo="acme/webapp", preview_domain="preview.myserver.com")
+        labels = env.get_traefik_labels(service_port=3000)
+        assert labels["traefik.http.routers.task-42.rule"] == "Host(`task-42.preview.myserver.com`)"
+
+    def test_custom_network(self):
+        env = DockerEnvironment(task_id=42, repo="acme/webapp", network="my-network")
+        assert env.network == "my-network"
+
+    def test_defaults_match_current_values(self):
+        env = DockerEnvironment(task_id=1, repo="r")
+        assert env.preview_domain == "preview.factory.6a.fi"
+        assert env.network == "factory-preview"
+
+
 # ── Integration test (Docker required) ──────────────────────────────────
 
 

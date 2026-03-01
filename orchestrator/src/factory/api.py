@@ -643,7 +643,7 @@ def _verify_github_signature(payload: bytes, signature: str, secret: str) -> boo
 
 
 @router.post("/webhooks/github")
-async def github_webhook(request: Request):
+async def github_webhook(request: Request, orch: Orchestrator = Depends(get_orchestrator)):
     secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
     if not secret:
         raise HTTPException(status_code=500, detail="Webhook secret not configured")
@@ -661,12 +661,13 @@ async def github_webhook(request: Request):
     if ref != "refs/heads/main":
         return {"status": "ignored", "reason": f"not main branch: {ref}"}
 
-    # Use systemd-run to spawn deploy.sh in its own scope (escapes the
-    # factory-orchestrator cgroup so it survives service restart)
+    if not orch.config.deploy.command:
+        raise HTTPException(status_code=404, detail="Deploy not configured")
+
     subprocess.Popen(
-        ["systemd-run", "--scope", "--unit=factory-deploy", "/opt/factory/deploy.sh"],
+        orch.config.deploy.command,
         start_new_session=True,
     )
-    logger.info("Deploy triggered by push to main (spawned deploy.sh)")
+    logger.info("Deploy triggered by push to main (spawned %s)", orch.config.deploy.command)
 
     return {"status": "deploy_started"}

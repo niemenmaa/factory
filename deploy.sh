@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOCKFILE="/opt/factory/deploy.lock"
-LOGFILE="/opt/factory/deploy.log"
-FACTORY_DIR="/opt/factory"
-ORCH_DIR="/opt/factory/orchestrator"
-VENV="/opt/factory/.venv"
-API_URL="http://localhost:8100/api"
+FACTORY_DIR="${FACTORY_HOME:-/opt/factory}"
+LOCKFILE="$FACTORY_DIR/deploy.lock"
+LOGFILE="$FACTORY_DIR/deploy.log"
+ORCH_DIR="$FACTORY_DIR/orchestrator"
+VENV="$FACTORY_DIR/.venv"
+API_URL="${FACTORY_API_URL:-http://localhost:8100/api}"
 POLL_INTERVAL=15
 POLL_TIMEOUT=2100  # 35 minutes
 
@@ -66,15 +66,16 @@ while true; do
 done
 
 # Restart the service
-log "Restarting factory-orchestrator..."
-systemctl restart factory-orchestrator
+SERVICE_NAME="${FACTORY_SERVICE:-factory-orchestrator}"
+log "Restarting $SERVICE_NAME..."
+systemctl restart "$SERVICE_NAME"
 
 # Wait a moment and verify
 sleep 2
-if systemctl is-active --quiet factory-orchestrator; then
+if systemctl is-active --quiet "$SERVICE_NAME"; then
     log "=== Deploy successful ==="
 else
-    log "ERROR: factory-orchestrator failed to start!"
-    systemctl status factory-orchestrator || true
+    log "ERROR: $SERVICE_NAME failed to start!"
+    systemctl status "$SERVICE_NAME" || true
     exit 1
 fi
