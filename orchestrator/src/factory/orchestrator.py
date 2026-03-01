@@ -95,7 +95,7 @@ class Orchestrator:
 
     async def _push_and_create_pr(self, task_id: int, wt_path: Path, branch_name: str,
                                    title: str, summary: str = "") -> str:
-        """Push branch and create a GitHub PR. Returns the PR URL."""
+        """Push branch and create a PR/MR. Returns the URL."""
         token = os.environ.get("GITHUB_TOKEN", "")
         remote_url = await self._run("git", "remote", "get-url", "origin", cwd=wt_path)
         if token and "github.com" in remote_url and "x-access-token" not in remote_url:
@@ -108,13 +108,24 @@ class Orchestrator:
         if summary:
             body += f"## Summary\n\n{summary[:3000]}\n"
 
-        pr_url = await self._run(
-            "gh", "pr", "create",
-            "--title", title,
-            "--body", body,
-            "--head", branch_name,
-            cwd=wt_path,
-        )
+        if "gitlab" in remote_url:
+            pr_url = await self._run(
+                "glab", "mr", "create",
+                "--title", title,
+                "--description", body,
+                "--source-branch", branch_name,
+                "--target-branch", "main",
+                "--no-editor",
+                cwd=wt_path,
+            )
+        else:
+            pr_url = await self._run(
+                "gh", "pr", "create",
+                "--title", title,
+                "--body", body,
+                "--head", branch_name,
+                cwd=wt_path,
+            )
         return pr_url
 
     async def _notify(self, message: str):
