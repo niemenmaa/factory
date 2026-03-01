@@ -37,6 +37,9 @@ class OrchestratorConfig(BaseModel):
 class RepoConfig(BaseModel):
     url: str
     default_agent: str = "coder"
+    image: str = ""
+    plane_project_id: str = ""  # Per-repo Plane project; falls back to plane.project_id
+    plane_states: PlaneStatesConfig = PlaneStatesConfig()  # Per-repo states; falls back to plane.states
 
 
 class AgentTemplateConfig(BaseModel):

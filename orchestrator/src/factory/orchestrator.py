@@ -70,8 +70,9 @@ class Orchestrator:
                 error="Agent lost due to orchestrator restart",
             )
             await self._update_plane_state(
-                task.plane_issue_id, self.config.plane.states.failed,
+                task.plane_issue_id, self._resolve_plane_states(task.repo).failed,
                 "Agent lost due to orchestrator restart",
+                repo=task.repo,
             )
             await self._notify(f"\u274c Task failed (restart): {task.title}")
         if tasks:
@@ -215,10 +216,26 @@ class Orchestrator:
             pass
         return False
 
-    async def _update_plane_state(self, plane_issue_id: str, state_id: str, comment: str = ""):
+    def _resolve_plane_project(self, repo: str = "") -> str:
+        """Resolve Plane project ID: per-repo override, then global fallback."""
+        if repo:
+            repo_config = self.config.repos.get(repo)
+            if repo_config and repo_config.plane_project_id:
+                return repo_config.plane_project_id
+        return self.config.plane.project_id
+
+    def _resolve_plane_states(self, repo: str = ""):
+        """Resolve Plane states config: per-repo override (if any field set), then global fallback."""
+        if repo:
+            repo_config = self.config.repos.get(repo)
+            if repo_config and repo_config.plane_states.queued:
+                return repo_config.plane_states
+        return self.config.plane.states
+
+    async def _update_plane_state(self, plane_issue_id: str, state_id: str, comment: str = "", repo: str = ""):
         if not self.plane or not plane_issue_id or not state_id:
             return
-        project_id = self.config.plane.project_id
+        project_id = self._resolve_plane_project(repo)
         try:
             await self.plane.update_issue_state(project_id, plane_issue_id, state_id)
             if comment:
@@ -226,10 +243,10 @@ class Orchestrator:
         except Exception as e:
             logger.warning("Failed to update Plane issue %s: %s", plane_issue_id, e)
 
-    async def _post_plane_comment(self, plane_issue_id: str, comment: str):
+    async def _post_plane_comment(self, plane_issue_id: str, comment: str, repo: str = ""):
         if not self.plane or not plane_issue_id:
             return
-        project_id = self.config.plane.project_id
+        project_id = self._resolve_plane_project(repo)
         try:
             await self.plane.add_comment(project_id, plane_issue_id, f"<p>{comment}</p>")
         except Exception as e:
@@ -249,8 +266,9 @@ class Orchestrator:
         if not repo_config:
             await self.db.update_task_status(task_id, TaskStatus.FAILED, error=f"Unknown repo: {task.repo}")
             await self._update_plane_state(
-                task.plane_issue_id, self.config.plane.states.failed,
-                f"Failed: Unknown repo '{task.repo}'"
+                task.plane_issue_id, self._resolve_plane_states(task.repo).failed,
+                f"Failed: Unknown repo '{task.repo}'",
+                repo=task.repo,
             )
             await self._notify(f"\u274c Task failed: {task.title}\nUnknown repo: {task.repo}")
             return False
@@ -259,8 +277,9 @@ class Orchestrator:
         if not template:
             await self.db.update_task_status(task_id, TaskStatus.FAILED, error=f"Unknown agent type: {task.agent_type}")
             await self._update_plane_state(
-                task.plane_issue_id, self.config.plane.states.failed,
-                f"Failed: Unknown agent type '{task.agent_type}'"
+                task.plane_issue_id, self._resolve_plane_states(task.repo).failed,
+                f"Failed: Unknown agent type '{task.agent_type}'",
+                repo=task.repo,
             )
             return False
 
@@ -273,8 +292,9 @@ class Orchestrator:
             logger.exception("Failed to set up workspace for task %d", task_id)
             await self.db.update_task_status(task_id, TaskStatus.FAILED, error=str(e))
             await self._update_plane_state(
-                task.plane_issue_id, self.config.plane.states.failed,
-                f"Failed to set up workspace: {e}"
+                task.plane_issue_id, self._resolve_plane_states(task.repo).failed,
+                f"Failed to set up workspace: {e}",
+                repo=task.repo,
             )
             await self._notify(f"\u274c Task failed: {task.title}\nWorkspace setup error")
             return False
@@ -306,8 +326,9 @@ class Orchestrator:
 
             await self.db.update_task_status(task_id, TaskStatus.IN_PROGRESS)
             await self._update_plane_state(
-                task.plane_issue_id, self.config.plane.states.in_progress,
-                f"Agent started on branch <code>{branch_name}</code>"
+                task.plane_issue_id, self._resolve_plane_states(task.repo).in_progress,
+                f"Agent started on branch <code>{branch_name}</code>",
+                repo=task.repo,
             )
             await self._notify(f"\U0001f527 Agent started: {task.title}\nBranch: {branch_name}")
 
@@ -336,8 +357,9 @@ class Orchestrator:
             if not started:
                 await self.db.update_task_status(task_id, TaskStatus.FAILED, error="Failed to start agent")
                 await self._update_plane_state(
-                    task.plane_issue_id, self.config.plane.states.failed,
-                    "Failed to start agent process"
+                    task.plane_issue_id, self._resolve_plane_states(task.repo).failed,
+                    "Failed to start agent process",
+                    repo=task.repo,
                 )
                 await self._notify(f"\u274c Task failed: {task.title}\nCould not start agent")
                 return False
@@ -350,8 +372,9 @@ class Orchestrator:
                     task_id, TaskStatus.FAILED, error=f"Agent launch error: {e}"
                 )
                 await self._update_plane_state(
-                    task.plane_issue_id, self.config.plane.states.failed,
-                    f"Agent launch error: {e}"
+                    task.plane_issue_id, self._resolve_plane_states(task.repo).failed,
+                    f"Agent launch error: {e}",
+                    repo=task.repo,
                 )
                 await self._notify(f"\u274c Task failed: {task.title}\nAgent launch error")
             except Exception:
@@ -565,7 +588,7 @@ This summary will be used as the PR description, so write it for a human reviewe
             return
         step = self._output_counts.get(task_id, 0)
         comment = f"<b>Progress (step {step})</b><br/><pre>{summary[:1000]}</pre>"
-        await self._post_plane_comment(task.plane_issue_id, comment)
+        await self._post_plane_comment(task.plane_issue_id, comment, repo=task.repo)
 
     def _on_agent_complete(self, task_id: int, returncode: int, output: str):
         self._output_counts.pop(task_id, None)
@@ -621,12 +644,13 @@ This summary will be used as the PR description, so write it for a human reviewe
             f"<p>{question}</p>"
             f"<p><i>Reply to this issue to provide your answer.</i></p>"
         )
-        await self._post_plane_comment(task.plane_issue_id, comment_html)
+        await self._post_plane_comment(task.plane_issue_id, comment_html, repo=task.repo)
 
         # Update Plane issue state if configured
-        if self.config.plane.states.waiting_for_input:
+        if self._resolve_plane_states(task.repo).waiting_for_input:
             await self._update_plane_state(
-                task.plane_issue_id, self.config.plane.states.waiting_for_input,
+                task.plane_issue_id, self._resolve_plane_states(task.repo).waiting_for_input,
+                repo=task.repo,
             )
 
         await self._notify(
@@ -690,7 +714,8 @@ This summary will be used as the PR description, so write it for a human reviewe
         if pr_url:
             comment += f'<br/>PR: <a href="{pr_url}">{pr_url}</a>'
         await self._update_plane_state(
-            task.plane_issue_id, self.config.plane.states.in_review, comment
+            task.plane_issue_id, self._resolve_plane_states(task.repo).in_review, comment,
+            repo=task.repo,
         )
 
         notify_msg = f"\u2705 Agent completed: {task.title}"
@@ -734,8 +759,9 @@ This summary will be used as the PR description, so write it for a human reviewe
                 return
 
             await self._update_plane_state(
-                task.plane_issue_id, self.config.plane.states.failed,
-                f"Agent failed: {output[:500]}"
+                task.plane_issue_id, self._resolve_plane_states(task.repo).failed,
+                f"Agent failed: {output[:500]}",
+                repo=task.repo,
             )
             await self._notify(f"\u274c Agent failed: {task.title}\n{output[:200]}")
 
@@ -808,8 +834,9 @@ This summary will be used as the PR description, so write it for a human reviewe
 
         await self.db.update_task_status(task_id, TaskStatus.IN_PROGRESS)
         await self._update_plane_state(
-            task.plane_issue_id, self.config.plane.states.in_progress,
-            f"Agent resumed with user input"
+            task.plane_issue_id, self._resolve_plane_states(task.repo).in_progress,
+            f"Agent resumed with user input",
+            repo=task.repo,
         )
         await self._notify(f"\u25b6\ufe0f Agent resumed: {task.title}")
 
@@ -837,7 +864,6 @@ This summary will be used as the PR description, so write it for a human reviewe
             return
 
         tasks = await self.db.list_tasks(status=TaskStatus.WAITING_FOR_INPUT)
-        project_id = self.config.plane.project_id
 
         for task in tasks:
             if not task.plane_issue_id or not task.clarification_context:
@@ -852,6 +878,7 @@ This summary will be used as the PR description, so write it for a human reviewe
             if not asked_at:
                 continue
 
+            project_id = self._resolve_plane_project(task.repo)
             try:
                 comments = await self.plane.get_comments(project_id, task.plane_issue_id)
             except Exception as e:
@@ -897,8 +924,9 @@ This summary will be used as the PR description, so write it for a human reviewe
             task = await self.db.get_task(task_id)
             if task:
                 await self._update_plane_state(
-                    task.plane_issue_id, self.config.plane.states.cancelled,
-                    "Task cancelled"
+                    task.plane_issue_id, self._resolve_plane_states(task.repo).cancelled,
+                    "Task cancelled",
+                    repo=task.repo,
                 )
                 await self._notify(f"\U0001f6d1 Task cancelled: {task.title}")
         return cancelled
@@ -1220,8 +1248,9 @@ This summary will be used as the PR description, so write it for a human reviewe
         )
 
         await self._update_plane_state(
-            workflow.plane_issue_id, self.config.plane.states.failed,
+            workflow.plane_issue_id, self._resolve_plane_states(workflow.repo).failed,
             f"Workflow failed at step {failed_step_index}: {error[:500]}",
+            repo=workflow.repo,
         )
         await self._notify(
             f"\u274c Workflow failed: {workflow.name} - {workflow.title}\n"
