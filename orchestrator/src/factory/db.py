@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 
@@ -347,6 +347,26 @@ class Database:
         )
         await self._db.commit()
         return cursor.rowcount
+
+    async def expire_stale_claims(self, ttl_seconds: int) -> list[int]:
+        """Release claims older than ttl_seconds on still-queued tasks. Returns released task ids."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)).isoformat()
+        cursor = await self._db.execute(
+            "SELECT id FROM tasks WHERE claimed_by IS NOT NULL "
+            "AND status = 'queued' AND claimed_at < ?",
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+        ids = [row["id"] for row in rows]
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            await self._db.execute(
+                f"UPDATE tasks SET claimed_by = NULL, claimed_at = NULL, execution_mode = 'local' "
+                f"WHERE id IN ({placeholders})",
+                ids,
+            )
+            await self._db.commit()
+        return ids
 
     # ── Workflow operations ──────────────────────────────────────────────
 

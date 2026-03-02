@@ -121,9 +121,12 @@ class ContainerManager:
                 logger.warning("Task %d timed out after %ds", task_id, int(elapsed))
                 try:
                     info["container"].kill()
+                    info["container"].remove(force=True)
                 except Exception:
                     pass
                 killed.append(task_id)
+        for tid in killed:
+            del self._running[tid]
         return killed
 
 

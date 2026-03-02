@@ -11,6 +11,8 @@ from factory.main import app
 from factory.models import TaskStatus
 from factory.orchestrator import Orchestrator
 
+TEST_AUTH_TOKEN = "test-secret-token"
+
 
 @pytest.fixture
 async def db():
@@ -52,6 +54,9 @@ def mock_orchestrator():
     # Config: plane (needed by existing create_task endpoint)
     orch.config.plane.default_repo = "myapp"
 
+    # Config: orchestrator auth
+    orch.config.orchestrator.auth_token = TEST_AUTH_TOKEN
+
     # Base dir
     orch.base_dir = Path("/tmp/factory-test")
 
@@ -70,7 +75,8 @@ async def client(db, mock_orchestrator):
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test",
+        headers={"Authorization": f"Bearer {TEST_AUTH_TOKEN}"},
     ) as c:
         yield c
     app.dependency_overrides.clear()
@@ -273,9 +279,87 @@ async def test_report_in_progress(client, db, mock_orchestrator):
     assert task.status == TaskStatus.IN_PROGRESS
 
 
+async def test_report_rejects_wrong_worker(client, db, mock_orchestrator):
+    """A worker that doesn't own the task cannot report results."""
+    task_data = await _create_task(client)
+    task_id = task_data["id"]
+
+    # Claim as worker w-1
+    await client.post(f"/api/tasks/{task_id}/claim", json={"worker_id": "w-1"})
+
+    # Try to report as worker w-2
+    resp = await client.post(
+        f"/api/tasks/{task_id}/report",
+        json={"worker_id": "w-2", "status": "done", "output": "hacked"},
+    )
+    assert resp.status_code == 403
+    assert "w-1" in resp.json()["detail"]
+
+
 async def test_report_task_not_found(client, mock_orchestrator):
     resp = await client.post(
         "/api/tasks/9999/report",
         json={"worker_id": "w-1", "status": "done", "output": ""},
     )
     assert resp.status_code == 404
+
+
+# ── Authentication tests ────────────────────────────────────────────
+
+
+@pytest.fixture
+async def unauthed_client(db, mock_orchestrator):
+    """Client without auth headers for testing rejection."""
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+async def test_heartbeat_rejects_no_token(unauthed_client):
+    resp = await unauthed_client.post(
+        "/api/workers/heartbeat",
+        json={"worker_id": "w-1", "max_agents": 4, "running": 1},
+    )
+    assert resp.status_code == 401
+
+
+async def test_claim_rejects_wrong_token(db, mock_orchestrator):
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test",
+        headers={"Authorization": "Bearer wrong-token"},
+    ) as c:
+        resp = await c.post(
+            "/api/tasks/claim", json={"worker_id": "w-1", "count": 1}
+        )
+    app.dependency_overrides.clear()
+    assert resp.status_code == 403
+
+
+async def test_report_rejects_no_token(unauthed_client):
+    resp = await unauthed_client.post(
+        "/api/tasks/1/report",
+        json={"worker_id": "w-1", "status": "done", "output": ""},
+    )
+    assert resp.status_code == 401
+
+
+async def test_worker_auth_disabled_when_no_token(db, mock_orchestrator):
+    """When auth_token is empty, all requests pass through."""
+    mock_orchestrator.config.orchestrator.auth_token = ""
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        resp = await c.post(
+            "/api/workers/heartbeat",
+            json={"worker_id": "w-1", "max_agents": 4, "running": 1},
+        )
+    app.dependency_overrides.clear()
+    assert resp.status_code == 200

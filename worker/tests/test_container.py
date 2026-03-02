@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
 from factory_worker.config import ContainerConfig
@@ -148,3 +149,26 @@ def test_start_with_ssh_dir(mock_docker_env):
         "/tmp/wt": {"bind": "/workspace", "mode": "rw"},
         "/home/user/.ssh": {"bind": "/root/.ssh", "mode": "ro"},
     }
+
+
+@patch("factory_worker.container.docker.from_env")
+def test_check_timeouts_removes_from_running(mock_docker_env):
+    """Timed-out containers must be removed from _running to prevent leaks."""
+    config = ContainerConfig(timeout_minutes=1)
+    mock_docker_env.return_value = MagicMock()
+    manager = ContainerManager(config)
+
+    mock_container = MagicMock()
+    manager._running[42] = {
+        "container": mock_container,
+        "task_id": 42,
+        "started_at": datetime.now(timezone.utc) - timedelta(minutes=5),
+    }
+    assert manager.running_count == 1
+
+    killed = manager.check_timeouts()
+
+    assert killed == [42]
+    assert manager.running_count == 0
+    mock_container.kill.assert_called_once()
+    mock_container.remove.assert_called_once_with(force=True)

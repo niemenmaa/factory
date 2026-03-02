@@ -59,8 +59,6 @@ orchestrator:
 def test_execution_config_defaults():
     config = Config()
     assert config.execution.prefer_workers is True
-    assert config.execution.local_fallback is True
-    assert config.execution.worker_claim_window_seconds == 30
     assert config.execution.worker_heartbeat_ttl_seconds == 60
     assert config.execution.claim_lease_ttl_seconds == 300
 

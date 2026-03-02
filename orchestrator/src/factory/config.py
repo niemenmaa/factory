@@ -75,8 +75,6 @@ class MessageBoardConfig(BaseModel):
 
 class ExecutionConfig(BaseModel):
     prefer_workers: bool = True
-    local_fallback: bool = True
-    worker_claim_window_seconds: int = 30
     worker_heartbeat_ttl_seconds: int = 60
     claim_lease_ttl_seconds: int = 300
 

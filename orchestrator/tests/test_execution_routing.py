@@ -18,7 +18,7 @@ async def db():
 @pytest.fixture
 def config():
     return Config(
-        execution=ExecutionConfig(prefer_workers=True, local_fallback=True),
+        execution=ExecutionConfig(prefer_workers=True),
         repos={"myapp": RepoConfig(url="https://github.com/test/myapp.git")},
         agent_templates={"coder": AgentTemplateConfig(
             system_prompt_file="prompts/coder.md",

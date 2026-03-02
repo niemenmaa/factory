@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from factory.db import Database
-from factory.deps import get_db, get_orchestrator
+from factory.deps import get_db, get_orchestrator, verify_worker_token
 from factory.models import (
     AgentHandoff, AgentInfo, ClaimPayload, CodeReviewCreate, HandoffCreate,
     Message, MessageCreate, MessageType,
@@ -487,7 +487,7 @@ def _build_claim_payload(task, orch) -> dict:
     ).model_dump()
 
 
-@router.post("/workers/heartbeat")
+@router.post("/workers/heartbeat", dependencies=[Depends(verify_worker_token)])
 async def worker_heartbeat(
     body: HeartbeatRequest,
     orch: Orchestrator = Depends(get_orchestrator),
@@ -512,7 +512,7 @@ async def list_workers(orch: Orchestrator = Depends(get_orchestrator)):
     ]
 
 
-@router.post("/tasks/claim")
+@router.post("/tasks/claim", dependencies=[Depends(verify_worker_token)])
 async def claim_tasks(
     body: ClaimRequest,
     db: Database = Depends(get_db),
@@ -523,7 +523,7 @@ async def claim_tasks(
     return {"tasks": payloads}
 
 
-@router.post("/tasks/{task_id}/claim")
+@router.post("/tasks/{task_id}/claim", dependencies=[Depends(verify_worker_token)])
 async def claim_specific_task(
     task_id: int,
     body: SingleClaimRequest,
@@ -540,7 +540,7 @@ async def claim_specific_task(
     return {"task": _build_claim_payload(task, orch)}
 
 
-@router.post("/tasks/{task_id}/report")
+@router.post("/tasks/{task_id}/report", dependencies=[Depends(verify_worker_token)])
 async def report_task_result(
     task_id: int,
     body: ReportRequest,
@@ -550,6 +550,13 @@ async def report_task_result(
     task = await db.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    # Verify the reporting worker owns this task
+    if task.claimed_by and task.claimed_by != body.worker_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Task claimed by {task.claimed_by}, not {body.worker_id}",
+        )
 
     # Handle in_progress status report (lease refresh)
     if body.status == "in_progress":

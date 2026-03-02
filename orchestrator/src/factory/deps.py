@@ -2,6 +2,8 @@ import logging
 import os
 from pathlib import Path
 
+from fastapi import Depends, HTTPException, Request
+
 from factory.config import Config, load_config
 from factory.db import Database
 from factory.memory import AgentMemory
@@ -66,3 +68,19 @@ def get_orchestrator() -> Orchestrator:
 
 def get_memory() -> AgentMemory | None:
     return _memory
+
+
+async def verify_worker_token(
+    request: Request,
+    orch: "Orchestrator" = Depends(get_orchestrator),
+) -> None:
+    """Validate Bearer token on worker protocol endpoints."""
+    expected = orch.config.orchestrator.auth_token
+    if not expected:
+        return  # No token configured — auth disabled
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = auth.removeprefix("Bearer ")
+    if token != expected:
+        raise HTTPException(status_code=403, detail="Invalid token")

@@ -37,11 +37,12 @@ class WorkerInfo:
     max_agents: int
     running: int
     last_heartbeat: datetime
+    ttl_seconds: int = 60
 
     @property
     def is_alive(self) -> bool:
         elapsed = (datetime.now(timezone.utc) - self.last_heartbeat).total_seconds()
-        return elapsed < 60
+        return elapsed < self.ttl_seconds
 
     @property
     def has_capacity(self) -> bool:
@@ -87,6 +88,7 @@ class Orchestrator:
             max_agents=max_agents,
             running=running,
             last_heartbeat=datetime.now(timezone.utc),
+            ttl_seconds=self.config.execution.worker_heartbeat_ttl_seconds,
         )
 
     def _has_active_workers(self) -> bool:
@@ -959,10 +961,21 @@ This summary will be used as the PR description, so write it for a human reviewe
             try:
                 await asyncio.sleep(POLL_INTERVAL)
                 await self.poll_waiting_tasks()
+                await self.prune_and_cleanup_dead_workers()
+                await self._expire_stale_claims()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.exception("Error in polling loop: %s", e)
+
+    async def _expire_stale_claims(self):
+        """Release claims that exceeded the lease TTL."""
+        ttl = self.config.execution.claim_lease_ttl_seconds
+        if ttl <= 0:
+            return
+        expired = await self.db.expire_stale_claims(ttl)
+        for task_id in expired:
+            logger.warning("Claim lease expired for task %d, releasing", task_id)
 
     async def cancel_task(self, task_id: int) -> bool:
         cancelled = await self.runner.cancel_agent(task_id)

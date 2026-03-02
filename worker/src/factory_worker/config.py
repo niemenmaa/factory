@@ -21,7 +21,6 @@ class WorkerConfig(BaseModel):
     poll_interval_seconds: int = 10
     claim_batch_size: int = 3
     container: ContainerConfig = ContainerConfig()
-    repos_filter: list[str] = []
 
 
 DEFAULT_CONFIG_PATH = Path.home() / ".factory" / "worker-config.yml"
@@ -33,8 +32,10 @@ def load_worker_config(path: Path | None = None) -> WorkerConfig:
         return WorkerConfig()
     with open(path) as f:
         data = yaml.safe_load(f) or {}
-    # Resolve env vars in auth_token
-    if "auth_token" in data and isinstance(data["auth_token"], str) and data["auth_token"].startswith("${"):
-        var_name = data["auth_token"].strip("${}")
-        data["auth_token"] = os.environ.get(var_name, "")
+    # Resolve env vars in auth_token (e.g. "${FACTORY_AUTH_TOKEN}")
+    if "auth_token" in data and isinstance(data["auth_token"], str):
+        val = data["auth_token"]
+        if val.startswith("${") and val.endswith("}"):
+            var_name = val[2:-1]
+            data["auth_token"] = os.environ.get(var_name, "")
     return WorkerConfig(**data)
